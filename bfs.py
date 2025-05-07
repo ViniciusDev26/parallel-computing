@@ -1,59 +1,81 @@
-from multiprocessing import Pool, Manager
-from grafo import grafo  # Importa o grafo gerado
+from multiprocessing import Pool, cpu_count
+from grafo import grafo  # Import your graph here
 from time import perf_counter
-from collections import deque  # Importação do deque
+from collections import deque
 
-def dfs_iterativo(grafo, inicio, visitados, componente):
-    pilha = [inicio]
-    while pilha:
-        no = pilha.pop()
-        if no not in visitados:
-            visitados.add(no)
-            componente.append(no)
-            pilha.extend(grafo.get(no, []))
+def dfs_iterative(graph, start, visited, component):
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        if node not in visited:
+            visited.add(node)
+            component.append(node)
+            stack.extend(graph.get(node, []))
 
-def encontrar_componentes_conexas(grafo):
-    visitados = set()
-    componentes = []
+def find_connected_components(graph):
+    visited = set()
+    components = []
 
-    for no in grafo:
-        if no not in visitados:
-            componente = []
-            dfs_iterativo(grafo, no, visitados, componente)
-            componentes.append(componente)
+    for node in graph:
+        if node not in visited:
+            component = []
+            dfs_iterative(graph, node, visited, component)
+            components.append(component)
 
-    return componentes
+    return components
 
-def bfs_subgrafo(args):
-    grafo, inicio, visitados_compartilhado = args
-    fila = deque([inicio])  # Usando deque
+def bfs_batch_subgraph(args):
+    graph, subcomponents = args
+    local_visited = []
 
-    while fila:
-        vertice = fila.popleft()  # O(1) com deque
-        if vertice not in visitados_compartilhado:
-            print(f"[{inicio}] Visitando: {vertice}")
-            visitados_compartilhado.append(vertice)
-            for vizinho in grafo.get(vertice, []):
-                if vizinho not in visitados_compartilhado and vizinho not in fila:
-                    fila.append(vizinho)
+    for component in subcomponents:
+        queue = deque([component[0]])  # Entry point
+        visited = set()
 
-def bfs(grafo, number_of_workers=1):
-    manager = Manager()
-    visitados = manager.list()
+        while queue:
+            vertex = queue.popleft()
+            if vertex not in visited:
+                print(f"[{component[0]}] Visiting: {vertex}")
+                visited.add(vertex)
+                local_visited.append(vertex)
+                for neighbor in graph.get(vertex, []):
+                    if neighbor not in visited:
+                        queue.append(neighbor)
     
-    componentes = encontrar_componentes_conexas(grafo)
+    return local_visited
 
-    argumentos = [(grafo, next(iter(componente)), visitados) for componente in componentes]
+def group_components(components, num_groups):
+    # Group components into approximately balanced blocks
+    sorted_components = sorted(components, key=len, reverse=True)
+    groups = [[] for _ in range(num_groups)]
+    weights = [0] * num_groups
+
+    for comp in sorted_components:
+        smallest_group = weights.index(min(weights))
+        groups[smallest_group].append(comp)
+        weights[smallest_group] += len(comp)
+
+    return groups
+
+def bfs(graph, number_of_workers=cpu_count()):
+    start = perf_counter()
+
+    components = find_connected_components(graph)
+    groups = group_components(components, number_of_workers)
+    args = [(graph, group) for group in groups]
 
     with Pool(processes=number_of_workers) as pool:
-        pool.map(bfs_subgrafo, argumentos)
+        results = pool.map(bfs_batch_subgraph, args)
 
-    print("\nTodos os nós visitados:", list(visitados))
+    # Merge results
+    visited = set()
+    for partial in results:
+        visited.update(partial)
 
-if __name__ == "__main__":
-    start = perf_counter()
-    # bfs(grafo, 1)  # Usa 1 processos
-    bfs(grafo, 2)  # Usa 2 processos
     end = perf_counter()
 
-    print(f"Tempo de execução: {end - start:.6f} segundos")
+    print(f"\nTotal visited nodes: {len(visited)}")
+    print(f"Execution time: {end - start:.6f} seconds")
+
+if __name__ == "__main__":
+    bfs(grafo, number_of_workers=4)  # Adjust number of processes as needed

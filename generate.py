@@ -1,6 +1,6 @@
 import random
 
-def gerar_e_salvar_grafo_grande(caminho_arquivo, num_nos=500, conexoes_por_no=3):
+def gerar_e_salvar_grafo_grande(caminho_arquivo, num_nos=5000, conexoes_por_no=3):
     with open(caminho_arquivo, "w") as f:
         f.write("grafo = { \n")
         for i in range(num_nos):
